@@ -1,73 +1,74 @@
-/*
- * backend.c
- * ----------
- * Role: PRIVILEGED validation process.
- * - Starts with elevated privileges (run this as setuid-root, or launched
- *   by root, depending on how you demo it).
- * - Listens on a UNIX domain socket for credential-check requests from
- *   frontend.c.
- * - Performs the actual validation (e.g. checks against a stored
- *   hash — do NOT use real /etc/shadow for coursework, use your own
- *   dummy credentials file).
- * - CRITICAL: after any privileged operation is done, permanently drops
- *   privileges with setresuid() before doing anything else (like sending
- *   the response back), so a compromised backend can't be abused to do
- *   more privileged actions later.
- *
- * STATUS: skeleton — fill in the TODOs.
- */
-
+#define _GNU_SOURCE
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/types.h>
 
-#define SOCKET_PATH "/tmp/authsock"
+#define SOCKET_PATH "./authsock"
 #define BUF_SIZE 256
+#define UNPRIV_UID 1000
+#define UNPRIV_GID 1000
 
-// TODO: write a helper to print current uid/euid/suid so you can screenshot
-// this for your report as evidence of the privilege drop, e.g.:
-// void print_ids(const char *label) {
-//     printf("[%s] uid=%d euid=%d\n", label, getuid(), geteuid());
-// }
+static void drop_privileges(void) {
+    if (setresgid(UNPRIV_GID, UNPRIV_GID, UNPRIV_GID) != 0) {
+        perror("setresgid failed"); exit(1);
+    }
+    if (setresuid(UNPRIV_UID, UNPRIV_UID, UNPRIV_UID) != 0) {
+        perror("setresuid failed"); exit(1);
+    }
+    uid_t ruid, euid, suid;
+    getresuid(&ruid, &euid, &suid);
+    printf("[Backend] post-drop UIDs -> real:%d effective:%d saved:%d\n", ruid, euid, suid);
 
-int validate_credentials(const char *user, const char *pass) {
-    // TODO: replace with real check against a local dummy credential
-    // store (do NOT hardcode a real system password).
-    return 0; // placeholder: always fail for now
+    if (setuid(0) == 0) {
+        fprintf(stderr, "[Backend] CRITICAL: privilege drop was reversible!\n");
+        exit(1);
+    } else {
+        printf("[Backend] confirmed: cannot regain root\n");
+    }
 }
 
 int main(void) {
-    // TODO 0: print_ids("startup") — show we start privileged
+    printf("[Backend] starting, euid=%d\n", geteuid());
+    if (geteuid() != 0) {
+        fprintf(stderr, "[Backend] warning: not root, drop test meaningless. Run via sudo.\n");
+    }
+    drop_privileges();
 
-    // TODO 1: create + bind() + listen() on a UNIX domain socket at
-    // SOCKET_PATH (remember to unlink() any stale socket file first)
+    unlink(SOCKET_PATH);
+    int listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (listen_sock == -1) { perror("socket"); return 1; }
 
-    // TODO 2: accept() a connection from frontend.c
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-    // TODO 3: recv() username + password
+    if (bind(listen_sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("bind"); return 1;
+    }
+    if (listen(listen_sock, 5) == -1) { perror("listen"); return 1; }
 
-    // TODO 4: run validate_credentials() WHILE STILL PRIVILEGED
-    // (this is the part that conceptually needs elevated access —
-    // e.g. reading a protected credentials file)
+    printf("[Backend] listening on %s (unprivileged)\n", SOCKET_PATH);
 
-    // TODO 5: DROP PRIVILEGES PERMANENTLY
-    //   if (setresuid(getuid(), getuid(), getuid()) != 0) {
-    //       perror("setresuid failed");
-    //       // must treat this as fatal - never continue privileged
-    //   }
-    //   print_ids("after drop");
+    while (1) {
+        int client = accept(listen_sock, NULL, NULL);
+        if (client == -1) { perror("accept"); continue; }
 
-    // TODO 6: verify the drop actually happened and is irreversible
-    //   e.g. try seteuid(0) again here and confirm it FAILS — log this,
-    //   it's good evidence for your report
+        char buf[BUF_SIZE];
+        ssize_t n = read(client, buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = '\0';
+            printf("[Backend] received: %s\n", buf);
+            const char *reply = "received (validation not yet implemented)";
+            write(client, reply, strlen(reply));
+        }
+        close(client);
+    }
 
-    // TODO 7: send pass/fail result back to frontend over the socket
-
-    // TODO 8: clear password buffer from memory (see investigation Q10-12)
-
-    // TODO 9: close socket, unlink SOCKET_PATH, exit
-
+    close(listen_sock);
     return 0;
 }

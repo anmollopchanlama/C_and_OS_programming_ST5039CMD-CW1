@@ -20,7 +20,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define SOCKET_PATH "/tmp/authsock"   // must match backend.c
+#define SOCKET_PATH "./authsock"   // must match backend.c
 #define BUF_SIZE 256
 
 int main(void) {
