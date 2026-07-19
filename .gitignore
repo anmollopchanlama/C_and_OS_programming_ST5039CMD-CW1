@@ -1,0 +1,11 @@
+
+task1-privsep/Backend
+
+task1-privsep/Frontend
+
+task2-sandbox/sandbox
+
+*.o
+
+authsock
+
