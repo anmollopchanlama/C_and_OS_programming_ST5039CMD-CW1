@@ -30,9 +30,15 @@ int main(void) {
     printf("Username: ");
     // TODO: read username safely with fgets(), strip newline
 
+    if (fgets(username, BUF_SIZE, stdin) == NULL) return 1;
+    username[strcspn(username, "\n")] = '\0';
+
     printf("Password: ");
     // TODO: read password safely with fgets(), strip newline
     // (later: consider disabling terminal echo for the password using termios)
+
+    if (fgets(password, BUF_SIZE, stdin) == NULL) return 1;
+    password[strcspn(password, "\n")] = '\0';
 
     // TODO 1: create a UNIX domain socket
     //   int sock = socket(AF_UNIX, SOCK_STREAM, 0);
